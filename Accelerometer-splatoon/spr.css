@@ -1,0 +1,15 @@
+body{
+    background-color: rgba(220, 250, 95,0.33);
+}
+#canvas{
+    background-color: white;
+    margin-left: 7%;
+    
+    border: 2px solid;
+}
+#rr{
+    color: red;
+}
+#rb{
+    color: blue;
+}

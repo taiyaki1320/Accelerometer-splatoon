@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial - scale=1">
+        <title>
+            最終課題　ス○○トゥ－ン  
+        </title>
+        <link rel="stylesheet" href="spr.css">
+        <script src="/socket.io/socket.io.js"></script>
+    </head>
+    <body>
+        <div id="msg">
+           ここにデータを表示（iphoneはここを1回タップ）
+        </div>
+        <input id="btn1" type="button" value="プレイヤー1"></input>                 <!--プレイヤー1のボタン-->
+        <input id="btn2" type="button" value="プレイヤー2"></input><br>             <!--プレイヤー2のボタン-->
+        <div id="msg2">プレイヤー1・2をせーので押してね!押した瞬間ゲームスタート‼</div>
+        残り時間<output></output>秒                                                 <!--残り時間を表示-->
+        <!--絵を描くcanvasタグ-->
+	<canvas id = "canvas" width="300" height="400" ></canvas><br>
+        
+    <script>
+        const socket = io();                    //双方向通信
+        
+        let user = 0;                               //ユーザーを宣言
+        let ax = 0,ay = 0,az = 0;                   //加速度データを入れる変数を３個用意
+        
+        let timerstart = 0;                          //タイマー宣言
+        let timer_ID;                               //【タイマーID】
+        let time = 60;                              // timeの初期化
+        const msg = document.getElementById("msg");  //データを表示するDivの取得
+        const msg2 = document.getElementById("msg2");
+        
+        //（Iphone対応）ユーザ操作で加速度データへのアクセスが許可される
+        msg.addEventListener("mousedown",() =>{     //divがタップされたら
+            DeviceMotionEvent.requestPermission();  //加速度データへのアクセス許可ダイアログを表示
+        });
+        //ボタンを押してユーザ選択
+        
+        btn1.addEventListener("mousedown",()=>{         //ボタン1を押したとき
+            user = 1;                                   //ユーザーに1を代入
+            timerstart= 1;                              //タイマースタートに1を代入
+        });
+        btn2.addEventListener("mousedown",()=>{         //ボタン2を押したとき
+            user = 2;                                   //ユーザーに2を代入
+           timerstart= 1;                               //タイマースタートに1を代入
+        });
+
+        //加速度センサの値が変化すると発生する DeviceMotionEvent
+        window.addEventListener("devicemotion",(ret) => {       //データの取得
+            ax = ret.accelerationIncludingGravity.x;    //x軸の加速度
+            ay = ret.accelerationIncludingGravity.y;    //y軸の加速度
+            az = ret.accelerationIncludingGravity.z;    //z軸の加速度
+
+            //IOSの場合に値の+/-を反転させる
+            if (navigator.platform ==="iPhone" || navigator.platform === "iPad"){
+                ax *= -1,ay *= -1,az *= -1;
+            }
+
+            //データの表示
+            msg.innerHTML = "x:" + ax + "<br>"
+                          + "y:" + ay + "<br>"
+                          + "z:" + az +"<br>"
+        });
+        //canvasを使うためのお決まりの2行
+	const canvas = document.getElementById("canvas");	//お絵描きセットを取得
+	const context = canvas.getContext("2d");		//その筆を取得
+
+
+    //プレイヤー1の準備
+    class playerA{
+        constructor(){
+            this.x = canvas.width / 2;
+            this.y = canvas.height / 2; //画面中央に配置
+            this.r =15;                 //円の半径
+            this.s=1.5;                 //プレイヤーが動くスピード（適当な値）
+            let startX = this.x;        //現在位置をスタートXに代入
+            let startY = this.y;        //現在位置をスタートYに代入
+        }
+        update(){
+            this.x -= ax * this.s;      //現在位置に横の加速度を反映する
+            this.y += ay * this.s;      //現在位置に縦の加速度を反映する
+            
+            //壁判定
+            if(this.y < 0){             //ｙが0より小さいとき
+                this.y = 0;             //ｙを0にする
+            }                           
+            if(this.y > canvas.height){//ｙがキャンバスの高さより大きいとき
+                this.y = canvas.height;//ｙをキャンバスの高さと同じにする
+            }
+            if(this.x < 0) {            //ｘが0より小さいとき
+                this.x = 0;             //ｘを0にする
+            }
+            if(this.x > canvas.width){      //ｙがキャンバスの高さより大きいとき
+                this.x = canvas.width;      //ｙをキャンバスの高さと同じにする
+            }
+            context.fillStyle = "#ff0000";      //赤色で塗る
+            context.beginPath();            //描き始める
+            context.arc(this.x,this.y,this.r,0,2*Math.PI);  //円弧
+            context.fill();             //塗りつぶす
+            const data ={           //送信用のデータに入れる
+                dx:this.x,
+                dy:this.y,
+                color:"#ff0000"
+            }
+            socket.emit("others",data);     //othersという名前でデータを送る
+        }      
+    }
+    
+    //プレイヤー２の準備
+    class playerB{
+        constructor(){
+            this.x = canvas.width / 2;  //画面中央に配置
+            this.y = canvas.height / 2; //円の半径
+            this.r =15;
+            this.s=1.5;   //プレイヤーが動くスピード（適当な値）
+            let startX = this.x;        //現在位置をスタートXに代入
+            let startY = this.y;        //現在位置をスタートYに代入
+        }
+        update(){
+            this.x -= ax * this.s;      //現在位置に横の加速度を反映する
+            this.y += ay * this.s;      //現在位置に縦の加速度を反映する
+            
+            //壁判定
+            if(this.y < 0){     //ｙが0より小さいとき
+                this.y = 0;     //ｙを0にする
+            }
+            if(this.y > canvas.height){//ｙがキャンバスの高さより大きいとき
+                this.y = canvas.height;//ｙをキャンバスの高さと同じにする
+            }
+            if(this.x < 0) {//ｘが0より小さいとき
+                this.x = 0; //ｘを0にする
+            }
+            if(this.x > canvas.width){      //ｙがキャンバスの高さより大きいとき
+                this.x = canvas.width;     //ｙをキャンバスの高さと同じにする
+            }
+            context.fillStyle = "#0000ff";//青色で塗る
+            context.beginPath();//描き始める
+            context.arc(this.x,this.y,this.r,0,2*Math.PI);//円弧
+            context.fill();//塗りつぶす
+            const data ={
+                dx:this.x,
+                dy:this.y,
+                color:"#0000ff"
+            }
+            socket.emit("others",data);//送信用のデータに入れる
+        }      
+    }
+    let player;     //プレイヤーを宣言
+
+                //１分タイマー
+    const gametimer = setInterval( ()=>{
+    if(timerstart == 1){        //タイマースタートが1の時スタート
+        if (time > 0){          //タイムが0より大きいなら
+            time--;	            //タイムを1ずつ引く
+        }
+
+    //結果発表
+    if(time === 0){             //タイムが0なら
+        clearInterval(gametimer);//ゲームタイマーを止める
+        let resulttext ="文字列";//文字列を宣言
+        let ir=0;//irを宣言
+        let ig=0;//igを宣言
+        let ib=0;//ibを宣言
+        let rr=0;//rrを宣言
+        let rb=0;//rbを宣言
+       const result = context.getImageData(0,0,canvas.width,canvas.height); //Canvas内の色データを取得
+       const image_data = result.data;      //取得したデータをイメージデータに代入
+       console.log(image_data);
+       for(let i =0; i < 47999; i+=4){      //iが配列の48000以下なら4ずつ加算して処理を繰り返す
+        let r = result.data[i];             //ｒに赤を代入
+        let g = result.data[i+1];           //ｇに緑を代入
+        let b = result.data[i+2];           //ｂに青を代入
+
+       ir += r;     //irにrを足す
+       ib += b;     //ibにbを足す
+    }
+    rr = ir/1000;   //rr/1000をrrに代入
+    rb = ib/1000;   //rb/1000をrrに代入
+    if (ir > ib){   //赤が青よりも多いなら
+    resulttext = "プレイヤー1"; //リザルトテキストにプレイヤー1を代入
+    }
+    if (ir < ib){   //青が赤よりも多いなら
+    resulttext = "プレイヤー2"; //リザルトテキストにプレイヤー2を代入
+    }
+    if(ir==ib){//赤と青が同じなら
+        resulttext="引き分け";//リザルトテキストに引き分けを代入
+    }
+    msg2.innerHTML = "結果は..."+rr+"対"+rb+"で"+ resulttext + "の勝利！！";    //結果のテキスト
+}
+        document.getElementsByTagName("output")[0].innerHTML = time;    //制限時間が0になったとき結果を表示する
+    }
+   },500);  //0.5秒ごとにカウントダウン
+
+    //タイマーで一定間隔で描画する
+    const timer = setInterval( ()=>{
+    //プレイヤー1の描画
+    if(user == 1){
+        player = new playerA();
+        user = 0;   //ユーザーに0を代入
+    }
+    //プレイヤー２の描画
+    if(user == 2){
+        player = new playerB();
+        user = 0;   //ユーザーに0を代入
+    }
+    player.update();
+   },33);                              //33ミリ秒ごとに実行（約30fps）
+        
+   //データ受け取り
+   socket.on("msg_others",(data)=>{     //othersで送られたデータの受け取り
+        context.fillStyle = data.color; //相手の色で塗りつぶす
+        context.beginPath();            //描き始める
+        context.arc(data.dx,data.dy,15,0,2*Math.PI);    //相手の円弧を表示
+        context.fill(); //塗りつぶし
+        }
+    )
+    </script>
+    </body>
+</html>
